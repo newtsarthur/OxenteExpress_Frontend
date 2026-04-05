@@ -291,7 +291,7 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
       </div>
 
       {selectedRole === "rider" && (
-        <div className="rounded-lg border border-secondary/40 bg-secondary/10 px-3 py-2 text-xs text-secondary-foreground leading-relaxed">
+        <div className="rounded-lg border border-secondary/40 bg-secondary/20 px-3 py-2 text-xs text-foreground leading-relaxed">
           <strong className="text-secondary">Entregador:</strong> após criar a conta, você cadastra o veículo em uma última tela — só então entra no app.
         </div>
       )}
