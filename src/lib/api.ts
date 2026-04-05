@@ -130,6 +130,12 @@ export const storeApi = {
 };
 
 export const packageApi = {
+  calculateShippingFee: (data: {
+    items: { productId: string; quantity: number }[];
+    address?: string;
+    lat?: number;
+    lon?: number;
+  }) => api.post("/package/calculate-shipping", data),
   createOrder: (data: {
     storeId?: string;
     items: { productId: string; quantity: number }[];
@@ -166,6 +172,25 @@ export const vehicleApi = {
     api.put("/vehicle/update", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+  // FIPE - Busca de veículos
+  searchFipe: (query: string) =>
+    api.get<{ vehicles: Array<{ brand: string; model: string; label: string; brandId: string; modelId: string }> }>(
+      `/vehicle/fipe/search?q=${encodeURIComponent(query)}`
+    ),
+  getFipeBrands: () =>
+    api.get<{ brands: Array<{ id: string; name: string }> }>(
+      `/vehicle/fipe/brands`
+    ),
+  // Busca anos disponíveis para um modelo
+  getFipeYears: (brandId: string, modelId: string) =>
+    api.get<{ years: Array<{ id: string; year: string }> }>(
+      `/vehicle/fipe/years?brandId=${brandId}&modelId=${modelId}`
+    ),
+  // Busca detalhes (preço, combustível, etc) do veículo
+  getFipeDetails: (brandId: string, modelId: string, yearId: string) =>
+    api.get<{ details: { model: string; brand: string; year: string; fuel: string; price: string; referenceMonth: string } }>(
+      `/vehicle/fipe/details?brandId=${brandId}&modelId=${modelId}&yearId=${yearId}`
+    ),
 };
 
 /** OxenteExpress_Backend: `GET /rider/packages?lat=&lon=&maxDistance=` (private.js). */

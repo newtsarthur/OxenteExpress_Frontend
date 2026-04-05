@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { StoreInfo } from "@/data/types";
 import { storeApi, getAxiosErrorMessage } from "@/lib/api";
+import { useSocket } from "@/contexts/SocketContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Star, Store } from "lucide-react";
@@ -39,6 +40,7 @@ function aggregateStores(results: NearbyProductRow[]): StoreInfo[] {
 export default function StoreList({ onSelectStore }: StoreListProps) {
   const [stores, setStores] = useState<StoreInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const socket = useSocket();
 
   useEffect(() => {
     const fetchStores = async () => {
@@ -56,6 +58,31 @@ export default function StoreList({ onSelectStore }: StoreListProps) {
     };
     fetchStores();
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleUserUpdated = (data: { action: string; user?: any }) => {
+      if (data.action === 'update' && data.user) {
+        // Atualiza a loja na lista se ela foi modificada
+        setStores((prev) =>
+          prev.map((store) =>
+            store.id === data.user.id
+              ? {
+                  ...store,
+                  name: data.user.name || store.name,
+                  imageUrl: data.user.avatarUrl || store.imageUrl,
+                  address: data.user.address || store.address,
+                }
+              : store
+          )
+        );
+      }
+    };
+
+    socket.on('user_updated', handleUserUpdated);
+    return () => socket.off('user_updated', handleUserUpdated);
+  }, [socket]);
 
   if (loading) {
     return (
@@ -93,7 +120,7 @@ export default function StoreList({ onSelectStore }: StoreListProps) {
             <div className="absolute bottom-2 right-2">
               <span className="bg-background/90 backdrop-blur-sm text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-primary" />
-                {store.distanceKm} km
+                {store.distanceLabel ?? `${store.distanceKm.toFixed(2)} km`}
               </span>
             </div>
           </div>

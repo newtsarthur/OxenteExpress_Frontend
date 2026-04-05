@@ -46,11 +46,6 @@ export default function LoginPage() {
         <Card className="shadow-lg border-0">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg text-center">{isRegister ? "Criar conta" : "Entrar"}</CardTitle>
-            {!isRegister && (
-              <p className="text-xs text-muted-foreground text-center">
-                O tipo de conta é detectado automaticamente após o login (USER / STORE / RIDER).
-              </p>
-            )}
           </CardHeader>
           <CardContent>
             {isRegister ? (

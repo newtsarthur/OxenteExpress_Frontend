@@ -100,6 +100,7 @@ export interface StoreInfo {
   imageUrl: string;
   address: string;
   distanceKm: number;
+  distanceLabel?: string;
   rating?: number;
 }
 

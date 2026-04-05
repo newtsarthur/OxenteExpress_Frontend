@@ -9,6 +9,14 @@ export const SOCKET_EVENTS = {
   RIDER_PACKAGES_UPDATED: "rider_packages_updated",
   /** Cliente: mudança de status do pedido — payload: { orderId, status } ou vazio para forçar refetch */
   CUSTOMER_ORDER_STATUS: "customer_order_status",
+  /** Usuário atualizado (Cliente/Loja): nome, email, phone, avatar, endereço — payload: { action, user } */
+  USER_UPDATED: "user_updated",
+  /** Entregador atualizado: placa, modelo, veículo — payload: { action, riderId, vehicle } */
+  RIDER_UPDATED: "rider_updated",
+  /** Loja atualizada (nota: loja é um User com type='STORE') — payload: { action, user } */
+  STORE_UPDATED: "store_updated", // Pode ser um alias para USER_UPDATED se type === STORE
+  /** Produto atualizado (criado, editado, deletado) — payload: { action, product?, productId? } */
+  PRODUCT_UPDATED: "product_updated",
 } as const;
 
 /** Alias comuns — o cliente escuta todos em conjunto com STORE_NEW_ORDER / RIDER_PACKAGES_UPDATED */

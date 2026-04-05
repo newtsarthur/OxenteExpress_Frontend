@@ -2,12 +2,14 @@ import React, { useState, useEffect } from "react";
 import { Product, StoreInfo } from "@/data/types";
 import { storeApi, getAxiosErrorMessage } from "@/lib/api";
 import { useCart } from "@/contexts/CartContext";
+import { useSocket } from "@/contexts/SocketContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Plus, Package, Store } from "lucide-react";
 import { BoxImage } from "@/components/media/BoxImage";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface ProductCatalogProps {
   store: StoreInfo;
@@ -33,6 +35,7 @@ export default function ProductCatalog({ store, onBack }: ProductCatalogProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const { addItem } = useCart();
+  const socket = useSocket();
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -50,6 +53,52 @@ export default function ProductCatalog({ store, onBack }: ProductCatalogProps) {
     };
     fetchProducts();
   }, [store.id]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleProductUpdate = (data: { action: string; product?: Product; productId?: string }) => {
+      if (data.action === "delete" && data.productId) {
+        setProducts((prev) => prev.filter((p) => p.id !== data.productId));
+        toast.success("Produto removido da loja");
+      } else if (data.action === "create" && data.product) {
+        // Only add if it's from this store and has stock
+        if (data.product.storeId === store.id && data.product.quantity > 0) {
+          setProducts((prev) => [data.product, ...prev]);
+          toast.success("Novo produto disponível!");
+        }
+      } else if (data.action === "update" && data.product) {
+        // Only update if it's from this store
+        if (data.product.storeId === store.id) {
+          setProducts((prev) => {
+            if (data.product!.quantity > 0) {
+              const exists = prev.some((p) => p.id === data.product!.id);
+              if (exists) {
+                return prev.map((p) => (p.id === data.product!.id ? data.product! : p));
+              }
+              return [data.product!, ...prev];
+            }
+            return prev.filter((p) => p.id !== data.product!.id);
+          });
+          toast.success("Produto atualizado");
+        }
+      }
+    };
+
+    const handleStockReservationError = (data: { productId: string; error: string; available?: number }) => {
+      toast.error(`Erro ao reservar estoque: ${data.error}`);
+      // Recarrega os produtos para mostrar o estoque atual
+      fetchProducts();
+    };
+
+    socket.on("product_updated", handleProductUpdate);
+    socket.on("stock_reservation_error", handleStockReservationError);
+
+    return () => {
+      socket.off("product_updated", handleProductUpdate);
+      socket.off("stock_reservation_error", handleStockReservationError);
+    };
+  }, [socket, store.id]);
 
   const handleAdd = (product: Product) => {
     addItem(product);
@@ -94,11 +143,24 @@ export default function ProductCatalog({ store, onBack }: ProductCatalogProps) {
             <Card key={product.id} className="overflow-hidden shadow-sm animate-slide-up">
               <BoxImage path={product.imageUrl || undefined} alt={product.name} className="h-32 w-full" cacheKey={product.updatedAt} />
               <CardContent className="p-3 space-y-2">
-                <p className="font-medium text-sm line-clamp-2">{product.name}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-sm line-clamp-2 flex-1">{product.name}</p>
+                  <Badge variant={product.quantity > 0 ? "default" : "destructive"} className="shrink-0">
+                    {product.quantity > 0 ? `${Math.floor(product.quantity)}` : "0"}
+                  </Badge>
+                </div>
                 <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>
+                {product.quantity === 0 && (
+                  <p className="text-xs text-destructive font-medium">Fora de estoque</p>
+                )}
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <span className="text-sm font-bold text-primary">R$ {product.price.toFixed(2)}</span>
-                  <Button size="sm" className="h-8 px-2 shrink-0" onClick={() => handleAdd(product)}>
+                  <Button 
+                    size="sm" 
+                    className="h-8 px-2 shrink-0" 
+                    onClick={() => handleAdd(product)}
+                    disabled={product.quantity <= 0}
+                  >
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>

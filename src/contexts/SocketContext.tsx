@@ -28,7 +28,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     }
 
     const token = localStorage.getItem(TOKEN_KEY);
-    const url = import.meta.env.VITE_SOCKET_URL || API_BASE_URL;
+    const url = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
     const path = import.meta.env.VITE_SOCKET_PATH || "/socket.io";
 
     if (DEBUG) {
@@ -41,6 +41,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         path,
         auth: { token: token ?? "" },
         transports: ["polling", "websocket"],
+        withCredentials: true,
         reconnectionAttempts: 8,
         reconnectionDelay: 1000,
         timeout: 20000,
@@ -80,6 +81,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     RIDER_PACKAGE_ALIASES.forEach((ev) => s.on(ev, (...args) => logEvent(ev, args)));
     s.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, (...args) => logEvent(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, args));
     CUSTOMER_ORDER_ALIASES.forEach((ev) => s.on(ev, (...args) => logEvent(ev, args)));
+
+    // Real-time Everywhere: Listeners para atualizações de entidades
+    s.on(SOCKET_EVENTS.USER_UPDATED, (...args) => logEvent(SOCKET_EVENTS.USER_UPDATED, args));
+    s.on(SOCKET_EVENTS.RIDER_UPDATED, (...args) => logEvent(SOCKET_EVENTS.RIDER_UPDATED, args));
+    s.on(SOCKET_EVENTS.PRODUCT_UPDATED, (...args) => logEvent(SOCKET_EVENTS.PRODUCT_UPDATED, args));
+
+    // Stock reservation events
+    s.on('stock_reservation_success', (...args) => logEvent('stock_reservation_success', args));
+    s.on('stock_reservation_error', (...args) => logEvent('stock_reservation_error', args));
 
     s.onAny((event, ...args) => {
       if (DEBUG) console.debug("[socket] onAny:", event, args);

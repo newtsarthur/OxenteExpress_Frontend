@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Store, Bike, User, Mail, Lock, Phone, MapPin, Navigation, ImagePlus, Car, Loader2, Check, X, Sparkles } from "lucide-react";
+import { Store, Bike, User, Mail, Lock, Phone, MapPin, ImagePlus, Car, Loader2, Check, X, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { vehicleApi, buildVehicleFormData, getAxiosErrorMessage } from "@/lib/api";
 import { geocodeAddressToLatLon, formatCoordinates } from "@/lib/geocode";
@@ -49,7 +49,6 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
   const [weightMaxKg, setWeightMaxKg] = useState("20");
   const [vehicleImage, setVehicleImage] = useState<File | null>(null);
 
-  const [geoLoading, setGeoLoading] = useState(false);
   const [accountSubmitting, setAccountSubmitting] = useState(false);
   const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
 
@@ -66,11 +65,17 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
   const passwordValid = pwdRules.minLen && pwdRules.upper && pwdRules.number && pwdRules.special;
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
 
-  const handleAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setAvatarFile(f);
-      setAvatarPreview(URL.createObjectURL(f));
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    if (value.length <= 11) {
+      setPhone(value);
+    }
+  };
+
+  const handleVehiclePlateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); // Only letters and numbers, uppercase
+    if (value.length <= 7) {
+      setVehiclePlate(value);
     }
   };
 
@@ -81,40 +86,34 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
     try {
       const res = await geocodeAddressToLatLon(q);
       if (res) {
+        if (res.formattedAddress) {
+          setAddress(res.formattedAddress);
+        }
         setCoordinates(formatCoordinates(res.lat, res.lon));
-        toast.success("Endereço localizado no mapa.");
+        toast.success("Endereço localizado e formatado.");
       } else {
-        toast.message("Não foi possível obter coordenadas para este endereço. Tente ser mais específico ou use o GPS.");
+        toast.message("Não foi possível obter localização para este endereço. Tente ser mais específico ou use o GPS.");
       }
     } finally {
       setGeocodeLoading(false);
     }
   };
 
-  const handleUseGps = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocalização não suportada neste navegador.");
-      return;
+  const handleAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      setAvatarFile(f);
+      setAvatarPreview(URL.createObjectURL(f));
     }
-    setGeoLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const c = formatCoordinates(pos.coords.latitude, pos.coords.longitude);
-        setCoordinates(c);
-        setGeoLoading(false);
-        toast.success("Coordenadas obtidas pelo GPS.");
-      },
-      () => {
-        setGeoLoading(false);
-        toast.error("Não foi possível obter a localização. Verifique as permissões.");
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
   };
 
   const submitAccount = async () => {
-    if (!phone.trim()) {
-      toast.error("Telefone é obrigatório.");
+    if (!name.trim() || name.length > 60) {
+      toast.error("Nome é obrigatório e deve ter no máximo 60 caracteres.");
+      return;
+    }
+    if (!phone.trim() || phone.length !== 11) {
+      toast.error("Telefone deve ter exatamente 11 dígitos numéricos.");
       return;
     }
     if (!passwordValid) {
@@ -166,6 +165,10 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
       toast.error("Modelo e placa são obrigatórios.");
       return;
     }
+    if (vehiclePlate.length !== 7) {
+      toast.error("Placa deve ter exatamente 7 caracteres.");
+      return;
+    }
     const vol = parseFloat(volumeLiters);
     const w = parseFloat(weightMaxKg);
     if (Number.isNaN(vol) || Number.isNaN(w) || vol <= 0 || w <= 0) {
@@ -214,7 +217,7 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
         </div>
         <div className="space-y-2">
           <Label>Placa</Label>
-          <Input value={vehiclePlate} onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())} placeholder="ABC1D23" />
+          <Input value={vehiclePlate} onChange={handleVehiclePlateChange} maxLength={7} placeholder="ABC1D23" />
         </div>
         <div className="space-y-2">
           <Label>Cor</Label>
@@ -250,7 +253,7 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground text-center">Escolha o tipo de conta</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-4">
           {roles.map((r) => {
             const Icon = r.icon;
             const active = selectedRole === r.value;
@@ -259,13 +262,12 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
                 key={r.value}
                 type="button"
                 onClick={() => setSelectedRole(r.value)}
-                className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-all text-xs font-medium ${
-                  active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all text-sm font-medium ${
+                  active ? "border-primary bg-primary/10 text-primary shadow-md" : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:shadow-sm"
                 }`}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-6 h-6" />
                 <span>{r.label}</span>
-                <span className="text-[10px] opacity-70">{r.apiLabel}</span>
               </button>
             );
           })}
@@ -284,7 +286,7 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
           ← Tipo de conta
         </Button>
         <span className="text-xs text-muted-foreground">
-          {roles.find((r) => r.value === selectedRole)?.label} ({roles.find((r) => r.value === selectedRole)?.apiLabel})
+          {roles.find((r) => r.value === selectedRole)?.label}
         </span>
       </div>
 
@@ -305,13 +307,13 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
         <>
           <div className="space-y-1.5">
             <Label htmlFor="reg-name">Nome</Label>
-            <Input id="reg-name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input id="reg-name" value={name} onChange={(e) => setName(e.target.value.slice(0, 60))} maxLength={60} required />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="reg-phone">Telefone</Label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input id="reg-phone" className="pl-10" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+              <Input id="reg-phone" className="pl-10" value={phone} onChange={handlePhoneChange} maxLength={11} required />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -378,18 +380,8 @@ export default function RegisterWizard({ onDone, mode = "full" }: RegisterWizard
           </div>
 
           <div className="space-y-2">
-            <Label>Localização (automática)</Label>
-            <div className="flex gap-2">
-              <Input
-                readOnly
-                value={coordinates}
-                placeholder={geocodeLoading ? "Buscando coordenadas…" : "Preenchido após o endereço ou pelo GPS"}
-                className="text-xs font-mono flex-1"
-              />
-              <Button type="button" variant="outline" size="icon" onClick={handleUseGps} disabled={geoLoading || geocodeLoading} title="Usar GPS">
-                {geoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
-              </Button>
-            </div>
+            <Label>Localização</Label>
+            <p className="text-xs text-muted-foreground">Ao sair do campo, o endereço é padronizado e usado para calcular distâncias.</p>
           </div>
 
           <div className="space-y-2">

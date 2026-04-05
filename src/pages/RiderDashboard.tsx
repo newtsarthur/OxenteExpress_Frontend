@@ -113,7 +113,7 @@ export default function RiderDashboard() {
           setPackages([]);
           if (!opts?.silent) {
             toast.error(
-              "Informe seu endereço no perfil e aguarde a localização automática (coordenadas) para listar pacotes próximos."
+              "Informe seu endereço no perfil e aguarde a localização automática para listar pacotes próximos."
             );
           }
           return;
@@ -158,14 +158,42 @@ export default function RiderDashboard() {
     RIDER_PACKAGE_ALIASES.forEach((ev) => socket.on(ev, onRefresh));
     socket.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onRefresh);
     CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.on(ev, onRefresh));
+
+    // Real-time Everywhere: Atualizar informações da loja quando mudar
+    const onUserUpdated = (data: { action: string; user?: any }) => {
+      if (data.action === 'update' && data.user && activeDelivery) {
+        setActiveDelivery((prev) => {
+          if (!prev) return null;
+          // Se é a loja que atualizou (activeDelivery.storeId === data.user.id)
+          if (prev.storeId === data.user.id) {
+            return {
+              ...prev,
+              storeName: data.user.name || prev.storeName,
+              storeAddress: data.user.address || prev.storeAddress,
+            };
+          }
+          // Se é o cliente que atualizou (activeDelivery.customerId === data.user.id)
+          if (prev.customerId === data.user.id) {
+            return {
+              ...prev,
+              customerAddress: data.user.address || prev.customerAddress,
+            };
+          }
+          return prev;
+        });
+      }
+    };
+    socket.on('user_updated', onUserUpdated);
+
     return () => {
       socket.off("connect", onConnect);
       socket.off(SOCKET_EVENTS.RIDER_PACKAGES_UPDATED, onRefresh);
       RIDER_PACKAGE_ALIASES.forEach((ev) => socket.off(ev, onRefresh));
       socket.off(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onRefresh);
       CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.off(ev, onRefresh));
+      socket.off('user_updated', onUserUpdated);
     };
-  }, [socket, syncFromServer, loadHistory]);
+  }, [socket, syncFromServer, loadHistory, activeDelivery]);
 
   const handleAccept = async (pkg: PackageType) => {
     setAccepting(pkg.id);

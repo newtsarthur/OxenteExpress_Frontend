@@ -112,13 +112,51 @@ export default function StoreDashboard() {
     STORE_ORDER_ALIASES.forEach((ev) => socket.on(ev, onNewOrder));
     socket.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onOrderStatus);
     CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.on(ev, onOrderStatus));
+
+    // Real-time Everywhere: Atualizar informações do entregador quando a moto/placa mudar
+    const onRiderUpdated = (data: { action: string; riderId?: string; vehicle?: any }) => {
+      if (data.action === 'update' && data.riderId && data.vehicle) {
+        // Atualiza os pedidos que têm este entregador
+        setOrders((prev) =>
+          prev.map((order) =>
+            order.rider?.id === data.riderId
+              ? {
+                  ...order,
+                  rider: {
+                    ...order.rider,
+                    vehicle: data.vehicle,
+                  },
+                }
+              : order
+          )
+        );
+        // Também atualiza no pickupModal se aberto
+        if (pickupModal?.rider?.id === data.riderId) {
+          setPickupModal((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  rider: {
+                    ...prev.rider,
+                    vehicle: data.vehicle,
+                  },
+                }
+              : null
+          );
+        }
+        toast.info(`Veículo do entregador ${data.vehicle.model} (${data.vehicle.plate}) foi atualizado`);
+      }
+    };
+    socket.on('rider_updated', onRiderUpdated);
+
     return () => {
       socket.off(SOCKET_EVENTS.STORE_NEW_ORDER, onNewOrder);
       STORE_ORDER_ALIASES.forEach((ev) => socket.off(ev, onNewOrder));
       socket.off(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onOrderStatus);
       CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.off(ev, onOrderStatus));
+      socket.off('rider_updated', onRiderUpdated);
     };
-  }, [socket, loadOrders, loadHistory]);
+  }, [socket, loadOrders, loadHistory, pickupModal]);
 
   const applyStatus = async (orderId: string, newStatus: OrderStatus): Promise<boolean> => {
     try {

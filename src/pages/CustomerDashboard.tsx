@@ -93,9 +93,30 @@ function CustomerDashboardInner() {
     };
     socket.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onStatus);
     CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.on(ev, onStatus));
+
+    // Real-time Everywhere: Atualizar informações da loja quando mudar
+    const onStoreUpdated = (data: { action: string; user?: any }) => {
+      if (data.action === 'update' && data.user) {
+        // Atualiza loja nos pedidos se houver mudança
+        setCustomerOrders((prev) =>
+          prev.map((order) =>
+            order.storeId === data.user.id
+              ? {
+                  ...order,
+                  storeName: data.user.name || order.storeName,
+                  storeAddress: data.user.address || order.storeAddress,
+                }
+              : order
+          )
+        );
+      }
+    };
+    socket.on('user_updated', onStoreUpdated);
+
     return () => {
       socket.off(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onStatus);
       CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.off(ev, onStatus));
+      socket.off('user_updated', onStoreUpdated);
     };
   }, [socket, loadOrders]);
 

@@ -53,6 +53,15 @@ export default function ProfileSheet() {
   const [vehicleWeight, setVehicleWeight] = useState("");
   const [vehicleImageFile, setVehicleImageFile] = useState<File | null>(null);
   const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
+  const [vehicleSuggestions, setVehicleSuggestions] = useState<Array<{ brand: string; model: string; label: string; brandId: string; modelId: string }>>([]);
+  const [fipeLoading, setFipeLoading] = useState(false);
+  const [showFipeSuggestions, setShowFipeSuggestions] = useState(false);
+  const fipeSearchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [vehicleYears, setVehicleYears] = useState<Array<{ id: string; year: string }>>([]);
+  const [vehicleYear, setVehicleYear] = useState("");
+  const [yearsLoading, setYearsLoading] = useState(false);
+  const [selectedFipeData, setSelectedFipeData] = useState<{ brandId: string; modelId: string } | null>(null);
+  const [fipeDetails, setFipeDetails] = useState<any>(null);
 
   useEffect(() => {
     if (!open || !user) return;
@@ -67,12 +76,121 @@ export default function ProfileSheet() {
     setAvatarCacheKey(Date.now());
     setVehicleEditing(false);
     setVehicleImageFile(null);
+    setVehicleSuggestions([]);
+    setVehicleYears([]);
+    setVehicleYear("");
+    setFipeDetails(null);
+    setSelectedFipeData(null);
     if (user.role === "rider") {
       void loadVehicle();
     } else {
       setVehicle(null);
     }
   }, [open, user]);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    if (value.length <= 11) {
+      setPhone(value);
+    }
+  };
+
+  const handleVehiclePlateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); // Only letters and numbers, uppercase
+    if (value.length <= 7) {
+      setVehiclePlate(value);
+    }
+  };
+
+  const handleVehicleModelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.slice(0, 50);
+    setVehicleModel(value);
+    setShowFipeSuggestions(true);
+
+    // Limpa timeout anterior
+    if (fipeSearchTimeoutRef.current) {
+      clearTimeout(fipeSearchTimeoutRef.current);
+    }
+
+    // Se menos de 2 caracteres, limpa sugestões
+    if (value.trim().length < 2) {
+      setVehicleSuggestions([]);
+      setShowFipeSuggestions(false);
+      return;
+    }
+
+    // Debounce de 500ms antes de buscar
+    setFipeLoading(true);
+    fipeSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const { data } = await vehicleApi.searchFipe(value);
+        setVehicleSuggestions(data.vehicles || []);
+      } catch (err) {
+        console.error("Erro ao buscar FIPE:", err);
+        setVehicleSuggestions([]);
+      } finally {
+        setFipeLoading(false);
+      }
+    }, 500);
+  };
+
+  const handleSelectFipeVehicle = async (suggestion: { brand: string; model: string; label: string; brandId: string; modelId: string }) => {
+    setVehicleModel(suggestion.label);
+    setShowFipeSuggestions(false);
+    setVehicleSuggestions([]);
+    setSelectedFipeData({ brandId: suggestion.brandId, modelId: suggestion.modelId });
+    
+    // Busca anos disponíveis
+    setYearsLoading(true);
+    try {
+      const { data } = await vehicleApi.getFipeYears(suggestion.brandId, suggestion.modelId);
+      setVehicleYears(data.years || []);
+      setVehicleYear(""); // Limpa seleção anterior
+      setFipeDetails(null);
+    } catch (err) {
+      console.error("Erro ao buscar anos FIPE:", err);
+      setVehicleYears([]);
+    } finally {
+      setYearsLoading(false);
+    }
+  };
+
+  const handleVehicleYearChange = async (yearId: string) => {
+    setVehicleYear(yearId);
+    
+    if (!selectedFipeData) return;
+
+    // Busca detalhes do veículo para o ano selecionado
+    try {
+      const { data } = await vehicleApi.getFipeDetails(
+        selectedFipeData.brandId,
+        selectedFipeData.modelId,
+        yearId
+      );
+      setFipeDetails(data.details);
+    } catch (err) {
+      console.error("Erro ao buscar detalhes FIPE:", err);
+      setFipeDetails(null);
+    }
+  };
+
+  const getUserTypeLabel = (type: string) => {
+    switch (type) {
+      case 'customer':
+        return 'Cliente';
+      case 'store':
+        return 'Loja';
+      case 'rider':
+        return 'Entregador';
+      default:
+        return type;
+    }
+  };
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const avatarDisplaySrc = useMemo(() => {
     const t = preview.trim();
@@ -88,8 +206,11 @@ export default function ProfileSheet() {
     try {
       const res = await geocodeAddressToLatLon(q);
       if (res) {
+        if (res.formattedAddress) {
+          setAddress(res.formattedAddress);
+        }
         setCoordinates(formatCoordinates(res.lat, res.lon));
-        toast.success("Endereço localizado.");
+        toast.success("Endereço localizado e formatado.");
       }
     } finally {
       setAddressGeocodeLoading(false);
@@ -136,6 +257,10 @@ export default function ProfileSheet() {
       toast.error("Modelo e placa são obrigatórios para o veículo.");
       return;
     }
+    if (vehiclePlate.length !== 7) {
+      toast.error("Placa deve ter exatamente 7 caracteres.");
+      return;
+    }
 
     setVehicleSubmitting(true);
     try {
@@ -166,6 +291,21 @@ export default function ProfileSheet() {
 
   const handleSave = async () => {
     if (!user) return;
+
+    // Validações
+    if (!name.trim() || name.length > 60) {
+      toast.error("Nome é obrigatório e deve ter no máximo 60 caracteres.");
+      return;
+    }
+    if (!email.trim() || !validateEmail(email)) {
+      toast.error("Email é obrigatório e deve ter um formato válido.");
+      return;
+    }
+    if (!phone.trim() || phone.length !== 11) {
+      toast.error("Telefone deve ter exatamente 11 dígitos numéricos.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -249,11 +389,11 @@ export default function ProfileSheet() {
               </label>
             </div>
             <div className="text-xs text-muted-foreground text-center">
-              Tipo: <strong>{user.userType}</strong>
+              Tipo: <strong>{getUserTypeLabel(user.role)}</strong>
             </div>
             <div className="space-y-2">
               <Label>Nome</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} disabled={submitting} />
+              <Input value={name} onChange={(e) => setName(e.target.value.slice(0, 60))} maxLength={60} disabled={submitting} />
             </div>
             <div className="space-y-2">
               <Label>Email</Label>
@@ -261,7 +401,7 @@ export default function ProfileSheet() {
             </div>
             <div className="space-y-2">
               <Label>Telefone</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={submitting} />
+              <Input value={phone} onChange={handlePhoneChange} maxLength={11} disabled={submitting} />
             </div>
             <div className="space-y-2">
               <Label>Endereço</Label>
@@ -273,17 +413,6 @@ export default function ProfileSheet() {
                 placeholder="Ao sair do campo, buscamos latitude e longitude automaticamente"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Coordenadas (automático)</Label>
-              <Input
-                readOnly
-                value={coordinates}
-                className="font-mono text-xs bg-muted/50"
-                placeholder={addressGeocodeLoading ? "Buscando…" : "Preenchido pelo endereço"}
-                disabled={submitting}
-              />
-            </div>
-
             {user.role === "rider" && (
               <div className="rounded-2xl border border-border bg-muted/70 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-4">
@@ -341,13 +470,54 @@ export default function ProfileSheet() {
                     {vehicleEditing && (
                       <div className="grid gap-3">
                         <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
+                          <div className="space-y-2 relative">
                             <Label>Modelo da moto</Label>
-                            <Input value={vehicleModel} onChange={(e) => setVehicleModel(e.target.value)} disabled={vehicleSubmitting} />
+                            <Input 
+                              value={vehicleModel} 
+                              onChange={handleVehicleModelChange}
+                              maxLength={50}
+                              placeholder="Ex: Honda CB 500"
+                              disabled={vehicleSubmitting} 
+                              onFocus={() => vehicleModel.trim().length >= 2 && setShowFipeSuggestions(true)}
+                              onBlur={() => setTimeout(() => setShowFipeSuggestions(false), 200)}
+                              autoComplete="off"
+                            />
+                            <p className="text-xs text-muted-foreground">{vehicleModel.length}/50</p>
+                            
+                            {/* Dropdown de sugestões FIPE */}
+                            {showFipeSuggestions && vehicleSuggestions.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-background border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                {vehicleSuggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => handleSelectFipeVehicle(suggestion)}
+                                    className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b border-border/30 last:border-b-0 text-sm"
+                                  >
+                                    <div className="font-medium">{suggestion.brand}</div>
+                                    <div className="text-xs text-muted-foreground">{suggestion.model}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Indicador de carregamento */}
+                            {fipeLoading && vehicleModel.trim().length >= 2 && (
+                              <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-background border border-border rounded-lg shadow-lg p-3 text-center text-xs text-muted-foreground">
+                                Buscando na FIPE...
+                              </div>
+                            )}
+
+                            {/* Mensagem quando nenhum resultado */}
+                            {!fipeLoading && showFipeSuggestions && vehicleModel.trim().length >= 2 && vehicleSuggestions.length === 0 && (
+                              <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-background border border-border rounded-lg shadow-lg p-3 text-center text-xs text-muted-foreground">
+                                Nenhum veículo encontrado. Digite outra marca.
+                              </div>
+                            )}
                           </div>
                           <div className="space-y-2">
                             <Label>Placa</Label>
-                            <Input value={vehiclePlate} onChange={(e) => setVehiclePlate(e.target.value)} disabled={vehicleSubmitting} />
+                            <Input value={vehiclePlate} onChange={handleVehiclePlateChange} maxLength={7} disabled={vehicleSubmitting} />
                           </div>
                         </div>
 
@@ -355,6 +525,37 @@ export default function ProfileSheet() {
                           <Label>Cor</Label>
                           <Input value={vehicleColor} onChange={(e) => setVehicleColor(e.target.value)} disabled={vehicleSubmitting} />
                         </div>
+
+                        {/* Campo de seleção de ano (aparece após selecionar modelo FIPE) */}
+                        {vehicleYears.length > 0 && (
+                          <div className="space-y-2">
+                            <Label>Ano do veículo (FIPE)</Label>
+                            <select
+                              value={vehicleYear}
+                              onChange={(e) => void handleVehicleYearChange(e.target.value)}
+                              disabled={yearsLoading}
+                              className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                            >
+                              <option value="">Selecione o ano...</option>
+                              {vehicleYears.map((y) => (
+                                <option key={y.id} value={y.id}>{y.year}</option>
+                              ))}
+                            </select>
+                            {yearsLoading && <p className="text-xs text-muted-foreground">Carregando anos...</p>}
+                          </div>
+                        )}
+
+                        {/* Exibição de detalhes FIPE */}
+                        {fipeDetails && (
+                          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+                            <p className="text-xs font-semibold text-primary">Dados da FIPE</p>
+                            <div className="space-y-1 text-xs text-muted-foreground">
+                              <p><strong>Combustível:</strong> {fipeDetails.fuel}</p>
+                              <p><strong>Valor FIPE:</strong> {fipeDetails.price}</p>
+                              <p><strong>Referência:</strong> {fipeDetails.referenceMonth}</p>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="space-y-2">
