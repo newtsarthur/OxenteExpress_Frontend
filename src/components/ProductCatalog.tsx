@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Product, StoreInfo } from "@/data/types";
 import { storeApi, getAxiosErrorMessage } from "@/lib/api";
 import { useCart } from "@/contexts/CartContext";
-import { useSocket } from "@/contexts/SocketContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +34,8 @@ export default function ProductCatalog({ store, onBack }: ProductCatalogProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const { addItem } = useCart();
-  const socket = useSocket();
+  const productsRef = useRef(products.length);
+  productsRef.current = products.length;
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -54,51 +54,25 @@ export default function ProductCatalog({ store, onBack }: ProductCatalogProps) {
     fetchProducts();
   }, [store.id]);
 
+  // Polling: substitui Socket.IO para compatibilidade com Vercel (serverless)
   useEffect(() => {
-    if (!socket) return;
-
-    const handleProductUpdate = (data: { action: string; product?: Product; productId?: string }) => {
-      if (data.action === "delete" && data.productId) {
-        setProducts((prev) => prev.filter((p) => p.id !== data.productId));
-        toast.success("Produto removido da loja");
-      } else if (data.action === "create" && data.product) {
-        // Only add if it's from this store and has stock
-        if (data.product.storeId === store.id && data.product.quantity > 0) {
-          setProducts((prev) => [data.product, ...prev]);
-          toast.success("Novo produto disponível!");
+    const interval = setInterval(async () => {
+      try {
+        const res = await storeApi.getStoreCatalog(store.id);
+        const list = Array.isArray(res.data) ? res.data : [];
+        const updated = list.map((p) => mapApiToProduct(p as Record<string, unknown>, store.id));
+        const prevCount = productsRef.current;
+        if (prevCount > 0 && updated.length !== prevCount) {
+          toast.info("Catálogo atualizado");
         }
-      } else if (data.action === "update" && data.product) {
-        // Only update if it's from this store
-        if (data.product.storeId === store.id) {
-          setProducts((prev) => {
-            if (data.product!.quantity > 0) {
-              const exists = prev.some((p) => p.id === data.product!.id);
-              if (exists) {
-                return prev.map((p) => (p.id === data.product!.id ? data.product! : p));
-              }
-              return [data.product!, ...prev];
-            }
-            return prev.filter((p) => p.id !== data.product!.id);
-          });
-          toast.success("Produto atualizado");
-        }
+        setProducts(updated);
+      } catch {
+        // silent
       }
-    };
+    }, 10000);
 
-    const handleStockReservationError = (data: { productId: string; error: string; available?: number }) => {
-      toast.error(`Erro ao reservar estoque: ${data.error}`);
-      // Recarrega os produtos para mostrar o estoque atual
-      fetchProducts();
-    };
-
-    socket.on("product_updated", handleProductUpdate);
-    socket.on("stock_reservation_error", handleStockReservationError);
-
-    return () => {
-      socket.off("product_updated", handleProductUpdate);
-      socket.off("stock_reservation_error", handleStockReservationError);
-    };
-  }, [socket, store.id]);
+    return () => clearInterval(interval);
+  }, [store.id]);
 
   const handleAdd = (product: Product) => {
     addItem(product);

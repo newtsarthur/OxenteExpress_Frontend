@@ -2,11 +2,10 @@ import React, { useState, useEffect } from "react";
 import { StoreInfo } from "@/data/types";
 import { storeApi, getAxiosErrorMessage } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSocket } from "@/contexts/SocketContext";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Star, Store } from "lucide-react";
-import { toast } from "sonner";
 import { BoxImage } from "@/components/media/BoxImage";
 
 interface StoreListProps {
@@ -42,7 +41,6 @@ export default function StoreList({ onSelectStore }: StoreListProps) {
   const [stores, setStores] = useState<StoreInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
-  const socket = useSocket();
 
   useEffect(() => {
     const fetchStores = async () => {
@@ -97,31 +95,6 @@ export default function StoreList({ onSelectStore }: StoreListProps) {
     };
     fetchStores();
   }, [user]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleUserUpdated = (data: { action: string; user?: any }) => {
-      if (data.action === 'update' && data.user) {
-        // Atualiza a loja na lista se ela foi modificada
-        setStores((prev) =>
-          prev.map((store) =>
-            store.id === data.user.id
-              ? {
-                  ...store,
-                  name: data.user.name || store.name,
-                  imageUrl: data.user.avatarUrl || store.imageUrl,
-                  address: data.user.address || store.address,
-                }
-              : store
-          )
-        );
-      }
-    };
-
-    socket.on('user_updated', handleUserUpdated);
-    return () => socket.off('user_updated', handleUserUpdated);
-  }, [socket]);
 
   if (loading) {
     return (

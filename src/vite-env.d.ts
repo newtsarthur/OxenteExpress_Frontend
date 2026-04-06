@@ -3,10 +3,6 @@
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
   readonly VITE_SUPABASE_PUBLIC_BOX_URL?: string;
-  /** URL do servidor Socket.io (default: mesma base da API). */
-  readonly VITE_SOCKET_URL?: string;
-  /** Path do handshake Socket.io no servidor (default: /socket.io). */
-  readonly VITE_SOCKET_PATH?: string;
   /** Cadastro público (OxenteExpress_Backend: POST /cadastro em public.js). */
   readonly VITE_REGISTER_PATH?: string;
   /** Se `vehicle`, usa POST `/vehicle` + userId no FormData; omitido = POST `/:userId/cadastro_veiculo` (private.js). */

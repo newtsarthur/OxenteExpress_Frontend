@@ -1,6 +1,5 @@
 import React, { useReducer } from "react";
 import { AuthProvider, useAuth, PENDING_RIDER_VEHICLE_KEY } from "@/contexts/AuthContext";
-import { SocketProvider } from "@/contexts/SocketContext";
 import LoginPage from "@/pages/LoginPage";
 import StoreDashboard from "@/pages/StoreDashboard";
 import RiderDashboard from "@/pages/RiderDashboard";
@@ -46,9 +45,7 @@ function AppContent() {
 
 const Index = () => (
   <AuthProvider>
-    <SocketProvider>
-      <AppContent />
-    </SocketProvider>
+    <AppContent />
   </AuthProvider>
 );
 

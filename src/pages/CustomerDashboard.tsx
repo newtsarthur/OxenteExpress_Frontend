@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSocket } from "@/contexts/SocketContext";
-import { SOCKET_EVENTS, CUSTOMER_ORDER_ALIASES } from "@/lib/socketEvents";
+import { playNotificationBeep } from "@/lib/beep";
 import { CartProvider } from "@/contexts/CartContext";
 import { StoreInfo, Order, OrderStatus } from "@/data/types";
 import { resolveBoxPublicUrl } from "@/lib/storageUrl";
@@ -56,13 +55,22 @@ function CustomerDashboardInner() {
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; title: string } | null>(null);
 
+  const ordersCountRef = useRef(customerOrders.length);
+  ordersCountRef.current = customerOrders.length;
+
   const loadOrders = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setOrdersLoading(true);
       try {
         const res = await packageApi.getCustomerOrders();
         const raw = res.data as ApiCustomerPackage[];
-        setCustomerOrders(raw.map(mapCustomerApiPackage));
+        const mapped = raw.map(mapCustomerApiPackage);
+        const prevCount = ordersCountRef.current;
+        if (prevCount > 0 && mapped.length > prevCount) {
+          playNotificationBeep();
+          toast.success("Novo status! Verifique seus pedidos.");
+        }
+        setCustomerOrders(mapped);
       } catch (err) {
         if (!opts?.silent) {
           setCustomerOrders([]);
@@ -79,46 +87,15 @@ function CustomerDashboardInner() {
     if (user?.id) void loadOrders();
   }, [user?.id, loadOrders]);
 
-  const socket = useSocket();
+  // Polling: substitui Socket.IO para compatibilidade com Vercel (serverless)
   useEffect(() => {
-    if (!socket) return;
-    const onStatus = (payload?: { orderId?: string; status?: OrderStatus }) => {
-      if (payload?.orderId && payload?.status) {
-        setCustomerOrders((prev) =>
-          prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status! } : o))
-        );
-      } else {
-        void loadOrders({ silent: true });
-      }
-    };
-    socket.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onStatus);
-    CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.on(ev, onStatus));
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      void loadOrders({ silent: true });
+    }, 8000);
 
-    // Real-time Everywhere: Atualizar informações da loja quando mudar
-    const onStoreUpdated = (data: { action: string; user?: any }) => {
-      if (data.action === 'update' && data.user) {
-        // Atualiza loja nos pedidos se houver mudança
-        setCustomerOrders((prev) =>
-          prev.map((order) =>
-            order.storeId === data.user.id
-              ? {
-                  ...order,
-                  storeName: data.user.name || order.storeName,
-                  storeAddress: data.user.address || order.storeAddress,
-                }
-              : order
-          )
-        );
-      }
-    };
-    socket.on('user_updated', onStoreUpdated);
-
-    return () => {
-      socket.off(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onStatus);
-      CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.off(ev, onStatus));
-      socket.off('user_updated', onStoreUpdated);
-    };
-  }, [socket, loadOrders]);
+    return () => clearInterval(interval);
+  }, [user?.id, loadOrders]);
 
   const resolvedPhotoUrl = useMemo(() => {
     if (!photoViewer?.url) return undefined;

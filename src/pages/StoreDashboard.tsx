@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSocket } from "@/contexts/SocketContext";
-import { SOCKET_EVENTS, STORE_ORDER_ALIASES, CUSTOMER_ORDER_ALIASES, playNotificationBeep } from "@/lib/socketEvents";
+import { playNotificationBeep } from "@/lib/beep";
 import { Order, OrderStatus } from "@/data/types";
 import { resolveBoxPublicUrl } from "@/lib/storageUrl";
 import { Card, CardContent } from "@/components/ui/card";
@@ -96,67 +95,23 @@ export default function StoreDashboard() {
     void loadHistory();
   }, [loadOrders, loadHistory]);
 
-  const socket = useSocket();
+  // Polling: substitui Socket.IO para compatibilidade com Vercel (serverless)
+  const ordersCountRef = useRef(orders.length);
+  ordersCountRef.current = orders.length;
   useEffect(() => {
-    if (!socket) return;
-    const onNewOrder = () => {
-      playNotificationBeep();
-      toast.success("Novo pedido recebido!", { description: "A lista foi atualizada." });
-      void loadOrders({ silent: true });
-    };
-    const onOrderStatus = () => {
-      void loadOrders({ silent: true });
-      void loadHistory();
-    };
-    socket.on(SOCKET_EVENTS.STORE_NEW_ORDER, onNewOrder);
-    STORE_ORDER_ALIASES.forEach((ev) => socket.on(ev, onNewOrder));
-    socket.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onOrderStatus);
-    CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.on(ev, onOrderStatus));
-
-    // Real-time Everywhere: Atualizar informações do entregador quando a moto/placa mudar
-    const onRiderUpdated = (data: { action: string; riderId?: string; vehicle?: any }) => {
-      if (data.action === 'update' && data.riderId && data.vehicle) {
-        // Atualiza os pedidos que têm este entregador
-        setOrders((prev) =>
-          prev.map((order) =>
-            order.rider?.id === data.riderId
-              ? {
-                  ...order,
-                  rider: {
-                    ...order.rider,
-                    vehicle: data.vehicle,
-                  },
-                }
-              : order
-          )
-        );
-        // Também atualiza no pickupModal se aberto
-        if (pickupModal?.rider?.id === data.riderId) {
-          setPickupModal((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  rider: {
-                    ...prev.rider,
-                    vehicle: data.vehicle,
-                  },
-                }
-              : null
-          );
-        }
-        toast.info(`Veículo do entregador ${data.vehicle.model} (${data.vehicle.plate}) foi atualizado`);
+    const interval = setInterval(async () => {
+      const prevCount = ordersCountRef.current;
+      await loadOrders({ silent: true });
+      await loadHistory();
+      const newCount = ordersCountRef.current;
+      if (prevCount > 0 && newCount > prevCount) {
+        playNotificationBeep();
+        toast.success("Novo pedido recebido!", { description: "A lista foi atualizada." });
       }
-    };
-    socket.on('rider_updated', onRiderUpdated);
+    }, 5000);
 
-    return () => {
-      socket.off(SOCKET_EVENTS.STORE_NEW_ORDER, onNewOrder);
-      STORE_ORDER_ALIASES.forEach((ev) => socket.off(ev, onNewOrder));
-      socket.off(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onOrderStatus);
-      CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.off(ev, onOrderStatus));
-      socket.off('rider_updated', onRiderUpdated);
-    };
-  }, [socket, loadOrders, loadHistory, pickupModal]);
+    return () => clearInterval(interval);
+  }, [loadOrders, loadHistory]);
 
   const applyStatus = async (orderId: string, newStatus: OrderStatus): Promise<boolean> => {
     try {

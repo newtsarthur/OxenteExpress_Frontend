@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Product } from "@/data/types";
 import { storeApi, getAxiosErrorMessage } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSocket } from "@/contexts/SocketContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +31,6 @@ import { toast } from "sonner";
 
 export default function StoreInventory() {
   const { user } = useAuth();
-  const socket = useSocket();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -65,42 +63,6 @@ export default function StoreInventory() {
   useEffect(() => {
     fetchProducts();
   }, [user?.id]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleProductUpdate = (data: { action: string; product?: Product; productId?: string }) => {
-      if (data.action === 'delete' && data.productId) {
-        setProducts((prev) => prev.filter((p) => p.id !== data.productId));
-        if (editProduct?.id === data.productId) {
-          setEditProduct(null);
-          toast.info("Este produto foi deletado.");
-        }
-      } else if (data.action === 'create' && data.product) {
-        // Only add if it's from this store
-        if (data.product.storeId === user?.id) {
-          setProducts((prev) => [data.product!, ...prev]);
-          toast.success("Novo produto adicionado!");
-        }
-      } else if (data.action === 'update' && data.product) {
-        // Only update if it's from this store
-        if (data.product.storeId === user?.id) {
-          setProducts((prev) =>
-            prev.map((p) => (p.id === data.product!.id ? data.product! : p))
-          );
-          if (editProduct?.id === data.product.id) {
-            setEditProduct(data.product);
-          }
-          toast.success("Produto atualizado!");
-        }
-      }
-    };
-
-    socket.on('product_updated', handleProductUpdate);
-    return () => {
-      socket.off('product_updated', handleProductUpdate);
-    };
-  }, [socket, editProduct]);
 
   const fetchProducts = async () => {
     setLoading(true);

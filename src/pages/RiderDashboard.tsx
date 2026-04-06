@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSocket } from "@/contexts/SocketContext";
-import { SOCKET_EVENTS, RIDER_PACKAGE_ALIASES, CUSTOMER_ORDER_ALIASES } from "@/lib/socketEvents";
 import { Package as PackageType, Order } from "@/data/types";
 import { resolveBoxPublicUrl } from "@/lib/storageUrl";
 import { Card, CardContent } from "@/components/ui/card";
@@ -141,59 +139,15 @@ export default function RiderDashboard() {
     void loadHistory();
   }, [syncFromServer, loadHistory]);
 
-  const socket = useSocket();
+  // Polling: substitui Socket.IO para compatibilidade com Vercel (serverless)
   useEffect(() => {
-    if (!socket) return;
-    const onRefresh = () => {
-      if (import.meta.env.DEV) console.info("[RiderDashboard] socket → syncFromServer");
+    const interval = setInterval(() => {
       void syncFromServer({ silent: true });
       void loadHistory();
-    };
-    const onConnect = () => {
-      void syncFromServer({ silent: true });
-      void loadHistory();
-    };
-    socket.on("connect", onConnect);
-    socket.on(SOCKET_EVENTS.RIDER_PACKAGES_UPDATED, onRefresh);
-    RIDER_PACKAGE_ALIASES.forEach((ev) => socket.on(ev, onRefresh));
-    socket.on(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onRefresh);
-    CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.on(ev, onRefresh));
+    }, 5000);
 
-    // Real-time Everywhere: Atualizar informações da loja quando mudar
-    const onUserUpdated = (data: { action: string; user?: any }) => {
-      if (data.action === 'update' && data.user && activeDelivery) {
-        setActiveDelivery((prev) => {
-          if (!prev) return null;
-          // Se é a loja que atualizou (activeDelivery.storeId === data.user.id)
-          if (prev.storeId === data.user.id) {
-            return {
-              ...prev,
-              storeName: data.user.name || prev.storeName,
-              storeAddress: data.user.address || prev.storeAddress,
-            };
-          }
-          // Se é o cliente que atualizou (activeDelivery.customerId === data.user.id)
-          if (prev.customerId === data.user.id) {
-            return {
-              ...prev,
-              customerAddress: data.user.address || prev.customerAddress,
-            };
-          }
-          return prev;
-        });
-      }
-    };
-    socket.on('user_updated', onUserUpdated);
-
-    return () => {
-      socket.off("connect", onConnect);
-      socket.off(SOCKET_EVENTS.RIDER_PACKAGES_UPDATED, onRefresh);
-      RIDER_PACKAGE_ALIASES.forEach((ev) => socket.off(ev, onRefresh));
-      socket.off(SOCKET_EVENTS.CUSTOMER_ORDER_STATUS, onRefresh);
-      CUSTOMER_ORDER_ALIASES.forEach((ev) => socket.off(ev, onRefresh));
-      socket.off('user_updated', onUserUpdated);
-    };
-  }, [socket, syncFromServer, loadHistory, activeDelivery]);
+    return () => clearInterval(interval);
+  }, [syncFromServer, loadHistory]);
 
   const handleAccept = async (pkg: PackageType) => {
     setAccepting(pkg.id);
