@@ -25,6 +25,7 @@ import { mapStoreApiOrder } from "@/lib/packageMappers";
 import StoreInventory from "@/components/StoreInventory";
 import { UserNavAvatar } from "@/components/UserNavAvatar";
 import ProfileSheet from "@/components/ProfileSheet";
+import AISupportChat from "@/components/AISupportChat";
 
 const statusConfig: Partial<Record<OrderStatus, { label: string; color: string }>> = {
   PENDING: { label: "Pendente", color: "bg-muted text-muted-foreground" },
@@ -511,6 +512,8 @@ export default function StoreDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AISupportChat />
     </div>
   );
 }

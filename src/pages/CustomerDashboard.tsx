@@ -26,6 +26,7 @@ import type { ApiCustomerPackage } from "@/lib/packageMappers";
 import { mapCustomerApiPackage } from "@/lib/packageMappers";
 import { UserNavAvatar } from "@/components/UserNavAvatar";
 import ProfileSheet from "@/components/ProfileSheet";
+import AISupportChat from "@/components/AISupportChat";
 
 const statusSteps: { key: OrderStatus; label: string }[] = [
   { key: "PENDING", label: "Recebido" },
@@ -319,6 +320,8 @@ function CustomerDashboardInner() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AISupportChat />
     </div>
   );
 }

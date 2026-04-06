@@ -35,6 +35,7 @@ import ProfileSheet from "@/components/ProfileSheet";
 import { PersonAvatar } from "@/components/media/PersonAvatar";
 import { BoxImage } from "@/components/media/BoxImage";
 import { Skeleton } from "@/components/ui/skeleton";
+import AISupportChat from "@/components/AISupportChat";
 
 function parseUserLatLon(coordinates: string | null | undefined): { lat: string; lon: string } | null {
   const t = coordinates?.trim();
@@ -568,6 +569,8 @@ export default function RiderDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AISupportChat />
     </div>
   );
 }
