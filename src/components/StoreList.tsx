@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { StoreInfo } from "@/data/types";
 import { storeApi, getAxiosErrorMessage } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,13 +41,51 @@ function aggregateStores(results: NearbyProductRow[]): StoreInfo[] {
 export default function StoreList({ onSelectStore }: StoreListProps) {
   const [stores, setStores] = useState<StoreInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const socket = useSocket();
 
   useEffect(() => {
     const fetchStores = async () => {
       setLoading(true);
       try {
-        const res = await storeApi.getStores({});
+        let lat: number | undefined;
+        let lon: number | undefined;
+
+        // Tenta coordenadas salvas no perfil do usuário
+        if (user?.coordinates) {
+          const parts = user.coordinates.split(",");
+          if (parts.length === 2) {
+            const pLat = Number(parts[0]);
+            const pLon = Number(parts[1]);
+            if (Number.isFinite(pLat) && Number.isFinite(pLon)) {
+              lat = pLat;
+              lon = pLon;
+            }
+          }
+        }
+
+        // Fallback: geolocalização do navegador
+        if (lat == null || lon == null) {
+          try {
+            const pos = await navigator.geolocation.getCurrentPosition({
+              enableHighAccuracy: false,
+              timeout: 8000,
+              maximumAge: 300_000, // 5 min cache
+            });
+            lat = pos.coords.latitude;
+            lon = pos.coords.longitude;
+          } catch {
+            // GPS indisponível — backend tentará o endereço do perfil como fallback
+          }
+        }
+
+        const body: Record<string, unknown> = { maxDistance: 15 };
+        if (lat != null && lon != null) {
+          body.lat = lat;
+          body.lon = lon;
+        }
+
+        const res = await storeApi.getStores(body);
         const results = (res.data?.results ?? []) as NearbyProductRow[];
         setStores(aggregateStores(results));
       } catch (err) {
@@ -57,7 +96,7 @@ export default function StoreList({ onSelectStore }: StoreListProps) {
       }
     };
     fetchStores();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!socket) return;
